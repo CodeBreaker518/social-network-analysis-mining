@@ -57,7 +57,6 @@ TWITTER_ACCESS_SECRET=your_access_secret
 
 ```bash
 cd frontend
-npm install
 # o
 bun install
 ```
@@ -69,21 +68,18 @@ bun install
 ```bash
 cd backend
 venv\Scripts\activate
-python -m app.main
+uvicorn app.main:app --reload
 ```
 
 ### Iniciar el frontend
 
 ```bash
 cd frontend
-npm run dev
-# o
 bun dev
 ```
 
 Navega a `http://localhost:3000` para usar la aplicación.
 
-## Valor y aprendizaje
 
 Esta herramienta permite entender:
 - Estructuras de comunidades en conversaciones digitales
