@@ -57,7 +57,6 @@ TWITTER_ACCESS_SECRET=your_access_secret
 
 ```bash
 cd frontend
-# o
 bun install
 ```
 
