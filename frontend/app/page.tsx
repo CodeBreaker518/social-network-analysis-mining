@@ -74,6 +74,22 @@ interface UserInfo {
   raw_response?: any;
 }
 
+interface TweetExample {
+  id: string;
+  text: string;
+  author: string;
+  author_name?: string;
+  created_at?: string;
+  engagement_score?: number;
+  sentiment_score?: number;
+}
+
+interface NetworkInsights {
+  top_hashtags: Array<{ hashtag: string; count: number }>;
+  top_keywords: Array<{ word: string; count: number }>;
+  top_urls: Array<{ url: string; count: number }>;
+}
+
 interface NetworkMetrics {
   query: string;
   metrics: {
@@ -83,34 +99,44 @@ interface NetworkMetrics {
     influential_nodes: Array<{
       id: string;
       name: string;
+      full_name?: string;
       centrality: number;
+      metrics?: {
+        degree: number;
+        betweenness: number;
+        eigenvector: number;
+      };
     }>;
     sentiment?: {
       positivo: number;
       negativo: number;
       neutro: number;
     };
-    insights?: string[];
-    top_hashtags?: [string, number][];
-    top_words?: [string, number][];
-    top_urls?: [string, number][];
-    top_active_users?: [string, number][];
-    sentiment_examples?: {
-      positivos?: { text: string; author: string; id?: string }[];
-      negativos?: { text: string; author: string; id?: string }[];
+    representative_examples?: {
+      positivo?: TweetExample | null;
+      negativo?: TweetExample | null;
     };
+    insights?: NetworkInsights;
   };
   most_influential: Array<{
     id: string;
     name: string;
+    full_name?: string;
     centrality: number;
+    metrics?: {
+      degree: number;
+      betweenness: number;
+      eigenvector: number;
+    };
   }>;
   communities: Array<{
     id: number;
+    name?: string;
     size: number;
     nodes: Array<{
       id: string;
       name: string;
+      full_name?: string;
     }>;
     top_nodes?: Array<{
       id: string;
@@ -540,36 +566,137 @@ export default function Home() {
   // Panel de insights y sentimiento mejorado
   const renderInsightsAndSentiment = () => {
     if (!networkResult || networkResult.error) return null;
+    
+    // Verificar que metrics existe
     const m = networkResult.metrics;
+    if (!m) return null;
+
+    // Si no hay datos de sentimiento, no renderizar nada
+    if (!m.sentiment || 
+        typeof m.sentiment.positivo !== 'number' ||
+        typeof m.sentiment.negativo !== 'number' ||
+        typeof m.sentiment.neutro !== 'number') {
+        return null;
+    }
+
+    // Verificar que la suma de los sentimientos no es 0 para evitar gráficos vacíos
+    const totalSentiment = m.sentiment.positivo + m.sentiment.negativo + m.sentiment.neutro;
+    if (totalSentiment === 0) return null;
+
+    // Renderizar ejemplos representativos si existen
+    const renderRepresentativeExamples = () => {
+      if (!m.representative_examples) return null;
+      const { positivo, negativo } = m.representative_examples;
+      if (!positivo && !negativo) return null;
+      const tweetUrl = (id: string) => `https://twitter.com/i/web/status/${id}`;
+      const userUrl = (author: string) => `https://twitter.com/${author}`;
+      return (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+          {positivo && (
+            <Card className="border-green-200 dark:border-green-800">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-green-700 dark:text-green-200">
+                  <Smile className="w-5 h-5" /> Ejemplo positivo
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="mb-2 text-green-900 dark:text-green-100">"{positivo.text}"</p>
+                <div className="flex items-center gap-2 text-sm">
+                  <a href={userUrl(positivo.author)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">@{positivo.author}</a>
+                  {positivo.created_at && <span className="text-gray-400">· {new Date(positivo.created_at).toLocaleString()}</span>}
+                </div>
+                <a href={tweetUrl(positivo.id)} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline text-xs mt-1 inline-block">Ver tweet</a>
+              </CardContent>
+            </Card>
+          )}
+          {negativo && (
+            <Card className="border-red-200 dark:border-red-800">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-200">
+                  <Frown className="w-5 h-5" /> Ejemplo negativo
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="mb-2 text-red-900 dark:text-red-100">"{negativo.text}"</p>
+                <div className="flex items-center gap-2 text-sm">
+                  <a href={userUrl(negativo.author)} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">@{negativo.author}</a>
+                  {negativo.created_at && <span className="text-gray-400">· {new Date(negativo.created_at).toLocaleString()}</span>}
+                </div>
+                <a href={tweetUrl(negativo.id)} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline text-xs mt-1 inline-block">Ver tweet</a>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      );
+    };
+
+    // Renderizar insights principales si existen
+    const renderInsights = () => {
+      if (!m.insights) return null;
+      const { top_hashtags, top_keywords, top_urls } = m.insights;
+      if (!top_hashtags.length && !top_keywords.length && !top_urls.length) return null;
+      return (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-blue-700 dark:text-blue-200">
+                <Hash className="w-5 h-5" /> Hashtags principales
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-1">
+                {top_hashtags.length === 0 && <li className="text-gray-400">No hay hashtags destacados.</li>}
+                {top_hashtags.map((h, i) => (
+                  <li key={i}>
+                    <a href={`https://twitter.com/hashtag/${encodeURIComponent(h.hashtag.replace('#', ''))}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">#{h.hashtag}</a>
+                    <span className="ml-2 text-xs text-gray-500">({h.count})</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-violet-700 dark:text-violet-200">
+                <Lightbulb className="w-5 h-5" /> Palabras clave
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-1">
+                {top_keywords.length === 0 && <li className="text-gray-400">No hay palabras clave destacadas.</li>}
+                {top_keywords.map((w, i) => (
+                  <li key={i}>
+                    <span className="text-violet-700 dark:text-violet-200 font-medium">{w.word}</span>
+                    <span className="ml-2 text-xs text-gray-500">({w.count})</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-emerald-700 dark:text-emerald-200">
+                <Link className="w-5 h-5" /> URLs más compartidas
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-1">
+                {top_urls.length === 0 && <li className="text-gray-400">No hay URLs destacadas.</li>}
+                {top_urls.map((u, i) => (
+                  <li key={i}>
+                    <a href={u.url} target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline dark:text-emerald-300">{u.url}</a>
+                    <span className="ml-2 text-xs text-gray-500">({u.count})</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    };
 
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <Card className={`${THEME.card.base} ${THEME.card.gradient(THEME.colors.warning.bg)}`}>
-          <CardHeader className="border-b border-amber-100 dark:border-amber-800">
-            <CardTitle className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
-              <Lightbulb className="w-5 h-5" />
-              Insights principales
-            </CardTitle>
-            <CardDescription className="text-amber-600 dark:text-amber-300">
-              Descubrimientos clave del análisis
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="px-6 pb-6 pt-0">
-            <ul className="space-y-3">
-              {m.insights?.slice(0, 3).map((insight, i) => (
-                <li key={i} className="flex items-center justify-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0 mt-1">
-                    <span className="text-sm font-bold text-amber-600">{i + 1}</span>
-                  </div>
-                  <p className="text-sm font-medium text-amber-800 dark:text-amber-200 flex-1">
-                    {insight}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-
+      <div className="grid grid-cols-1 gap-6 mb-8">
         <Card className={`${THEME.card.base} ${THEME.card.gradient(THEME.colors.success.bg)}`}>
           <CardHeader className="border-b border-green-100 dark:border-green-800">
             <CardTitle className="flex items-center gap-2 text-green-800 dark:text-green-200">
@@ -582,161 +709,10 @@ export default function Home() {
           </CardHeader>
           <CardContent className="p-6">
             {renderSentimentPie(m.sentiment)}
+            {renderRepresentativeExamples()}
+            {renderInsights()}
           </CardContent>
         </Card>
-      </div>
-    );
-  };
-
-  // Mejorar las secciones de contenido y sentimiento para mostrar solo top 3 y explicación
-  const renderContentSection = () => {
-    if (!networkResult || networkResult.error) return null
-    const m = networkResult.metrics
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Hashtags más usados</CardTitle>
-            <CardDescription>Los hashtags más relevantes en la conversación.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ul>
-              {m.top_hashtags?.slice(0, 3).map(([tag, count], i) => (
-                <li key={i} className="font-mono">#{tag} <span className="text-gray-500">({count})</span></li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Palabras clave</CardTitle>
-            <CardDescription>Palabras más repetidas (sin stopwords).</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {m.top_words?.slice(0, 5).map(([word, count], i) => (
-                <span key={i} className="bg-gray-200 dark:bg-gray-700 rounded px-2 py-1 text-sm">{word}</span>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>URLs más compartidas</CardTitle>
-            <CardDescription>Enlaces más difundidos en los tweets.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ul>
-              {m.top_urls?.slice(0, 3).map(([url, count], i) => (
-                <li key={i}><a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">{url}</a> <span className="text-gray-500">({count})</span></li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Usuarios más activos</CardTitle>
-            <CardDescription>Usuarios que más han publicado/interactuado.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ul>
-              {m.top_active_users?.slice(0, 3).map(([user, count], i) => (
-                <li key={i}>@{user} <span className="text-gray-500">({count})</span></li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  // Mejorar las cards de sentimiento para que sean más grandes, visuales y con enlaces claros
-  const renderSentimentSection = () => {
-    if (!networkResult || networkResult.error) return null;
-    const m = networkResult.metrics;
-    const positivos = m.sentiment_examples?.positivos || [];
-    const negativos = m.sentiment_examples?.negativos || [];
-    if (positivos.length === 0 && negativos.length === 0) return null;
-
-    const renderTweetCard = (tweet: any, sentiment: 'positivo' | 'negativo') => {
-      const isPositive = sentiment === 'positivo';
-      const colorTheme = isPositive ? THEME.colors.success : {
-        bg: 'from-red-50 to-white dark:from-red-900/40 dark:to-gray-950',
-        border: 'border-red-100 dark:border-red-800',
-        text: {
-          primary: 'text-red-800 dark:text-red-200',
-          secondary: 'text-red-600 dark:text-red-300'
-        }
-      };
-
-      return (
-        <Card className={`${THEME.card.base} ${THEME.card.gradient(isPositive ? THEME.colors.success.bg : colorTheme.bg)} p-2`}>
-          <CardHeader className={`flex flex-row items-center gap-4 pb-2 border-b ${isPositive ? 'border-green-100 dark:border-green-800' : colorTheme.border}`}>
-            <div className={`w-16 h-16 rounded-2xl ${isPositive ? 'bg-green-500/90' : 'bg-red-500/90'} text-white flex items-center justify-center shadow-lg`}>
-              {isPositive ? <Smile className="w-9 h-9" /> : <Frown className="w-9 h-9" />}
-            </div>
-            <div>
-              <CardTitle className={`text-xl font-bold ${isPositive ? 'text-green-800 dark:text-green-200' : colorTheme.text.primary}`}>
-                Tweet {isPositive ? 'positivo' : 'negativo'} destacado
-              </CardTitle>
-              <CardDescription className={isPositive ? 'text-green-600 dark:text-green-300 font-medium' : colorTheme.text.secondary}>
-                {tweet.engagement_score > 0 ? `Tweet con ${tweet.engagement_score.toFixed(0)} puntos de engagement` : 'Tweet destacado de la conversación'}
-              </CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent className="px-2 pb-2">
-            <div className="bg-white dark:bg-gray-900/60 rounded-2xl p-6 shadow-md space-y-4">
-              <blockquote className="text-lg font-medium text-gray-900 dark:text-gray-100 leading-relaxed">
-                "{tweet.text}"
-              </blockquote>
-              <div className={`flex items-center justify-between pt-2 border-t ${isPositive ? 'border-green-100 dark:border-green-800' : colorTheme.border}`}>
-                <div className="flex items-center gap-3">
-                  <a 
-                    href={`https://twitter.com/${tweet.author}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`${isPositive ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'} font-semibold hover:underline flex items-center gap-2`}
-                  >
-                    <span className={`w-8 h-8 rounded-full ${isPositive ? 'bg-green-100 dark:bg-green-900' : 'bg-red-100 dark:bg-red-900'} flex items-center justify-center`}>
-                      <span className="text-sm">@</span>
-                    </span>
-                    <div className="flex flex-col">
-                      <span>{tweet.author_name}</span>
-                      <span className="text-sm opacity-75">@{tweet.author}</span>
-                    </div>
-                  </a>
-                  <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                    isPositive 
-                      ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                      : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
-                  }`}>
-                    {isPositive ? 'Positivo' : 'Negativo'}
-                  </span>
-                </div>
-                <a
-                  href={`https://twitter.com/i/web/status/${tweet.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`flex items-center gap-1 text-sm font-medium ${
-                    isPositive 
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-red-600 dark:text-red-400'
-                  } hover:underline`}
-                >
-                  Ver tweet
-                  <ExternalLink className="w-4 h-4" />
-                </a>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      );
-    };
-
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {positivos.length > 0 && renderTweetCard(positivos[0], 'positivo')}
-        {negativos.length > 0 && renderTweetCard(negativos[0], 'negativo')}
       </div>
     );
   };
@@ -826,7 +802,6 @@ export default function Home() {
                       communitiesCount={networkResult.communities?.length || 0} 
                     />
                     {renderInsightsAndSentiment()}
-                    {renderSentimentSection()}
                   </div>
                 )}
                 {/* Panel de comunidades, usuarios influyentes y grafo */}
