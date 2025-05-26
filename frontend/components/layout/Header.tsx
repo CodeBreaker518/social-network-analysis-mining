@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Network, Share2, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import XformerlyTwitter from '../ui/twitter-logo';
 
 interface ApiHealth {
   status: string;
@@ -25,52 +26,45 @@ export function Header({
   onCheckApiHealth
 }: HeaderProps) {
   return (
-    <header className="border-b">
-      <div className="container mx-auto py-4 px-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center space-x-2">
-            <Network className="h-6 w-6 text-indigo-600" />
-            <h1 className="text-xl font-bold">Analisis de Red Social - X/Twitter</h1>
+    <header className="bg-white dark:bg-gray-950 shadow-md sticky top-0 z-50 border-b border-gray-100 dark:border-gray-800">
+      <div className="container mx-auto py-4 px-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center space-x-3">
+          <XformerlyTwitter className="h-8 w-8 text-black bg-black p-1 rounded-sm" />
+          <span className="text-2xl font-extrabold tracking-tight text-indigo-700 dark:text-indigo-300">Twitter Análisis</span>
+        </div>
+        <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+          <div className="flex items-center gap-2">
+            <span className={`w-3 h-3 rounded-full ${backendConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+            <span className="text-sm font-medium">
+              {backendConnected ? 'Backend conectado' : 'Backend desconectado'}
+            </span>
           </div>
-          
-          <div className="flex flex-col space-y-2">
-            <div className="flex items-center space-x-2">
-              <div className={`w-3 h-3 rounded-full ${backendConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-              <span className="text-sm">
-                {backendConnected ? 'Servidor conectado' : 'Servidor desconectado'}
-              </span>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={onCheckApiHealth}
-                disabled={checkingApiHealth}
-              >
-                {checkingApiHealth ? (
-                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                ) : (
-                  <Share2 className="h-4 w-4 mr-1" />
-                )}
-                Verificar API
-              </Button>
-            </div>
-            {apiHealth && (
-              <div className="flex items-center space-x-2 text-sm">
-                <div className={`w-3 h-3 rounded-full ${
-                  apiHealth.api_status === 'ok' ? 'bg-green-500' : 
-                  apiHealth.api_status === 'rate_limited' ? 'bg-yellow-500' : 'bg-red-500'
-                }`}></div>
-                <span>
-                  {apiHealth.api_status === 'ok' ? 'API de Twitter: OK' : 
-                   apiHealth.api_status === 'rate_limited' ? 'API de Twitter: Límite de tasa excedido' : 
-                   apiHealth.api_status === 'not_configured' ? 'API de Twitter: No configurada' : 
-                   'API de Twitter: Error de conexión'}
-                   {apiHealth.api_status === 'rate_limited' && (
-                    <span className="ml-1 text-yellow-600 dark:text-yellow-400 font-medium">(Espera unos minutos)</span>
-                   )}
-                </span>
-              </div>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={onCheckApiHealth}
+            disabled={checkingApiHealth}
+            className="flex items-center gap-2 border-indigo-200 dark:border-indigo-800"
+          >
+            {checkingApiHealth ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Share2 className="h-4 w-4" />
             )}
-          </div>
+            <span>Verificar API</span>
+          </Button>
+          {apiHealth && (
+            <span className={`px-2 py-1 rounded-full text-xs font-semibold ml-2 ${
+              apiHealth.api_status === 'ok' ? 'bg-green-100 text-green-700' :
+              apiHealth.api_status === 'rate_limited' ? 'bg-yellow-100 text-yellow-700' :
+              'bg-red-100 text-red-700'
+            }`}>
+              {apiHealth.api_status === 'ok' ? 'API OK' :
+               apiHealth.api_status === 'rate_limited' ? 'Límite de API' :
+               apiHealth.api_status === 'not_configured' ? 'API no configurada' :
+               'API error'}
+            </span>
+          )}
         </div>
       </div>
     </header>

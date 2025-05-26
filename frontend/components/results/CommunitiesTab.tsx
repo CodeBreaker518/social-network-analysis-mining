@@ -1,6 +1,6 @@
 'use client'
 
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, Users } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 
 interface Community {
@@ -26,6 +26,29 @@ interface CommunitiesTabProps {
   onExpandCommunity: (communityId: number, currentCount: number) => void;
 }
 
+// Tema y paleta de colores consistente
+const THEME = {
+  colors: {
+    primary: {
+      light: '#3B82F6',
+      medium: '#2563EB',
+      dark: '#1D4ED8',
+      bg: 'from-blue-50 to-white dark:from-blue-900/40'
+    },
+    success: {
+      light: '#10B981',
+      medium: '#059669',
+      dark: '#047857',
+      bg: 'from-green-50 to-white dark:from-green-900/40'
+    }
+  },
+  card: {
+    base: 'border-0 shadow-lg rounded-2xl overflow-hidden transform transition-all duration-200',
+    hover: 'hover:scale-[1.02] hover:shadow-xl',
+    gradient: (color: string) => `bg-gradient-to-br ${color}`
+  }
+}
+
 export function CommunitiesTab({
   communities,
   communitySizeRanking,
@@ -36,130 +59,158 @@ export function CommunitiesTab({
 }: CommunitiesTabProps) {
   return (
     <div className="space-y-6">
-      <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-md mb-4 border border-blue-100 dark:border-blue-800">
-        <h4 className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-1">Sobre las comunidades</h4>
-        <p className="text-sm text-blue-700 dark:text-blue-200">
-          Las comunidades son grupos de usuarios que interactúan más entre sí que con el resto de la red. Cada comunidad suele compartir intereses, opiniones o características comunes.
-        </p>
-        <p className="text-sm text-blue-700 dark:text-blue-200 mt-2">
-          En el contexto de Twitter, una comunidad puede representar seguidores de una figura pública, personas que discuten un tema específico, o usuarios que comparten una ideología u opinión.
-        </p>
-        <p className="text-sm text-blue-700 dark:text-blue-200 mt-2">
-          <strong>Nota:</strong> Las comunidades están ordenadas por tamaño total (número de usuarios). Los colores de cada comunidad coinciden con los mostrados en la visualización del grafo. Puedes hacer clic en cualquier nombre de usuario para visitar su perfil en Twitter.
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-6 rounded-2xl border border-blue-100 dark:border-blue-800">
+        <h3 className="text-xl font-bold text-blue-800 dark:text-blue-200 mb-2 flex items-center gap-2">
+          <Users className="w-6 h-6" />
+          Comunidades detectadas
+        </h3>
+        <p className="text-blue-600 dark:text-blue-300">
+          Grupos de usuarios que interactúan más entre sí, ordenados por tamaño. Cada comunidad representa un grupo de interés o temática dentro de la conversación.
         </p>
       </div>
-      
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-medium">Comunidades detectadas</h3>
-        <div className="text-sm text-gray-500">
-          Ordenadas por tamaño total (mayor a menor)
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <div className="grid gap-6">
         {communities
-          ?.slice() // Crear una copia para no modificar el original
+          ?.slice()
           .sort((a, b) => {
-            // Usamos preferentemente size (tamaño total) y si no está disponible, la longitud de nodes
             const aSize = a.size || a.nodes?.length || 0;
             const bSize = b.size || b.nodes?.length || 0;
-            return bSize - aSize; // Ordenar de mayor a menor
+            return bSize - aSize;
           })
-          .map((community, index) => (
-          <Card key={community.id}>
-            <CardHeader className="pb-3">
-              <div className="flex justify-between items-center">
-                <div className="flex items-center">
-                  <div 
-                    className="h-4 w-4 rounded-full mr-2" 
-                    style={{ 
-                      backgroundColor: communityColors[community.id] || 
-                        DEFAULT_COMMUNITY_COLORS[community.id % DEFAULT_COMMUNITY_COLORS.length]
-                    }}
-                    title={`Color usado en el grafo para esta comunidad`}
-                  ></div>
-                  <CardTitle className="text-base">Comunidad #{index + 1}</CardTitle>
-                </div>
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                  {community.size || community.nodes?.length || 0} usuarios
-                </span>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {community.top_nodes && community.top_nodes.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
-                    Usuarios influyentes en esta comunidad:
-                  </h4>
-                  <ul className="space-y-1.5">
-                    {community.top_nodes.map((node, idx) => (
-                      <li key={idx} className="flex items-center justify-between">
+          .map((community, index) => {
+            const communityColor = communityColors[community.id] || 
+              DEFAULT_COMMUNITY_COLORS[community.id % DEFAULT_COMMUNITY_COLORS.length];
+            
+            return (
+              <Card 
+                key={community.id}
+                className={`${THEME.card.base} ${THEME.card.hover} ${THEME.card.gradient(THEME.colors.primary.bg)}`}
+              >
+                <CardHeader className="border-b border-blue-100 dark:border-blue-800 pb-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div 
+                        className="w-10 h-10 rounded-xl flex items-center justify-center text-lg font-bold"
+                        style={{ 
+                          backgroundColor: `${communityColor}20`,
+                          color: communityColor
+                        }}
+                      >
+                        #{index + 1}
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg">
+                          Comunidad {communitySizeRanking[community.id] || index + 1}
+                        </CardTitle>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          {community.size || community.nodes?.length || 0} miembros
+                        </p>
+                      </div>
+                    </div>
+                    <span 
+                      className="px-3 py-1.5 rounded-full text-sm font-medium"
+                      style={{ 
+                        backgroundColor: `${communityColor}15`,
+                        color: communityColor
+                      }}
+                    >
+                      Grupo #{communitySizeRanking[community.id] || index + 1}
+                    </span>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-6">
+                  {community.top_nodes && community.top_nodes.length > 0 && (
+                    <div className="mb-6">
+                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                        Usuarios más influyentes
+                      </h4>
+                      <div className="grid gap-2">
+                        {community.top_nodes.map((node, idx) => (
+                          <div 
+                            key={idx} 
+                            className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-gray-800 shadow-sm"
+                          >
+                            <a 
+                              href={`https://twitter.com/${node.name}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:underline"
+                            >
+                              <span 
+                                className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+                                style={{ 
+                                  backgroundColor: `${communityColor}20`,
+                                  color: communityColor
+                                }}
+                              >
+                                {idx + 1}
+                              </span>
+                              @{node.name}
+                            </a>
+                            <div className="flex items-center gap-2">
+                              <span 
+                                className="px-2 py-1 rounded-full text-xs font-medium"
+                                style={{ 
+                                  backgroundColor: `${communityColor}15`,
+                                  color: communityColor
+                                }}
+                              >
+                                {node.centrality.toFixed(4)}
+                              </span>
+                              <a
+                                href={`https://twitter.com/${node.name}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </a>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                      Miembros de la comunidad
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {community.nodes.slice(0, expandedCommunities[community.id] || 8).map((node, idx) => (
                         <a 
+                          key={idx} 
                           href={`https://twitter.com/${node.name}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-sm flex items-center hover:text-blue-600 dark:hover:text-blue-400"
-                          title="Ver perfil de Twitter"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm transition-colors"
+                          style={{ 
+                            backgroundColor: `${communityColor}15`,
+                            color: communityColor
+                          }}
                         >
-                          <span>@{node.name}</span>
-                          <ExternalLink className="h-3 w-3 ml-1 opacity-60" />
+                          @{node.name}
+                          <ExternalLink className="w-3 h-3 ml-1" />
                         </a>
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" title="Valor de relevancia (influencia en la red)">
-                          {node.centrality.toFixed(4)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              
-              <div>
-                <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
-                  Otros miembros destacados:
-                  {community.size && community.nodes && community.size > community.nodes.length && (
-                    <span className="text-xs ml-2 text-gray-400">
-                      (mostrando {community.nodes.length} de {community.size} totales)
-                    </span>
-                  )}
-                </h4>
-                <div className="flex flex-wrap gap-1.5">
-                  {/* Mostrar el número de usuarios según el estado expandido o 8 por defecto */}
-                  {community.nodes.slice(0, expandedCommunities[community.id] || 8).map((node, idx) => (
-                    <a 
-                      key={idx} 
-                      href={`https://twitter.com/${node.name}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 hover:bg-blue-100 hover:text-blue-800 dark:hover:bg-blue-900/30 dark:hover:text-blue-200 transition-colors"
-                      title="Ver perfil de Twitter"
-                    >
-                      <span>@{node.name}</span>
-                      <ExternalLink className="h-2.5 w-2.5 ml-1 opacity-60" />
-                    </a>
-                  ))}
-                  
-                  {/* Botón "Ver más" si hay más usuarios para mostrar */}
-                  {community.nodes.length > (expandedCommunities[community.id] || 8) && (
-                    <button 
-                      onClick={() => onExpandCommunity(community.id, community.nodes.length)}
-                      className="cursor-pointer text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 flex items-center px-2 py-1 bg-blue-50 dark:bg-blue-900/20 rounded-full font-medium"
-                    >
-                      Ver más +{Math.min(12, community.nodes.length - (expandedCommunities[community.id] || 8))}
-                    </button>
-                  )}
-                  
-                  {/* Mensaje si se están mostrando todos los usuarios disponibles pero hay más según size */}
-                  {community.nodes.length <= (expandedCommunities[community.id] || 8) && 
-                   community.size && community.nodes.length < community.size && (
-                    <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center italic">
-                      +{community.size - community.nodes.length} usuarios adicionales no están disponibles para mostrar
-                    </span>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                      ))}
+                      {community.nodes.length > (expandedCommunities[community.id] || 8) && (
+                        <button 
+                          onClick={() => onExpandCommunity(community.id, community.nodes.length)}
+                          className="cursor-pointer text-sm font-medium flex items-center px-3 py-1.5 rounded-full transition-colors"
+                          style={{ 
+                            backgroundColor: `${communityColor}10`,
+                            color: communityColor
+                          }}
+                        >
+                          Ver +{Math.min(12, community.nodes.length - (expandedCommunities[community.id] || 8))}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
       </div>
     </div>
   );

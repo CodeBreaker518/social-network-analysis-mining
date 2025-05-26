@@ -8,7 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { BarChart3, Users, Network, Search, Loader2, Share2, ExternalLink, HelpCircle } from 'lucide-react'
+import { 
+  BarChart3, Users, Network, Search, Loader2, Share2, ExternalLink, 
+  HelpCircle, Smile, Frown, Hash, Link, Lightbulb, PieChart, TrendingUp 
+} from 'lucide-react'
+import { PieChart as ReChartsPie, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
 
 import { Header } from '@/components/layout/Header'
 import { BackendWarning } from '@/components/layout/BackendWarning'
@@ -19,9 +23,49 @@ import { SummaryMetrics } from '@/components/metrics/SummaryMetrics'
 import { OverviewTab } from '@/components/results/OverviewTab'
 import { InfluentialUsersTab } from '@/components/results/InfluentialUsersTab'
 import { CommunitiesTab } from '@/components/results/CommunitiesTab'
-import { GraphTab } from '@/components/results/GraphTab'
 import { NetworkError } from '@/components/results/NetworkError'
 import NetworkGraph from '@/components/NetworkGraph'
+
+// Tema y paleta de colores consistente para toda la aplicación
+const THEME = {
+  colors: {
+    primary: {
+      light: '#3B82F6',
+      medium: '#2563EB',
+      dark: '#1D4ED8',
+      bg: 'from-blue-50 to-white dark:from-blue-900/40'
+    },
+    success: {
+      light: '#10B981',
+      medium: '#059669',
+      dark: '#047857',
+      bg: 'from-green-50 to-white dark:from-green-900/40'
+    },
+    warning: {
+      light: '#F59E0B',
+      medium: '#D97706',
+      dark: '#B45309',
+      bg: 'from-amber-50 to-white dark:from-amber-900/40'
+    },
+    info: {
+      light: '#6366F1',
+      medium: '#4F46E5',
+      dark: '#4338CA',
+      bg: 'from-indigo-50 to-white dark:from-indigo-900/40'
+    },
+    accent: {
+      light: '#8B5CF6',
+      medium: '#7C3AED',
+      dark: '#6D28D9',
+      bg: 'from-violet-50 to-white dark:from-violet-900/40'
+    }
+  },
+  card: {
+    base: 'border-0 shadow-lg rounded-2xl overflow-hidden',
+    interactive: 'transform transition-all duration-200 hover:scale-[1.02] hover:shadow-xl',
+    gradient: (color: string) => `bg-gradient-to-br ${color}`
+  }
+}
 
 interface UserInfo {
   username: string;
@@ -41,6 +85,20 @@ interface NetworkMetrics {
       name: string;
       centrality: number;
     }>;
+    sentiment?: {
+      positivo: number;
+      negativo: number;
+      neutro: number;
+    };
+    insights?: string[];
+    top_hashtags?: [string, number][];
+    top_words?: [string, number][];
+    top_urls?: [string, number][];
+    top_active_users?: [string, number][];
+    sentiment_examples?: {
+      positivos?: { text: string; author: string; id?: string }[];
+      negativos?: { text: string; author: string; id?: string }[];
+    };
   };
   most_influential: Array<{
     id: string;
@@ -93,7 +151,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [networkResult, setNetworkResult] = useState<NetworkMetrics | null>(null)
   const [activeTab, setActiveTab] = useState<'dashboard' | 'search'>('dashboard')
-  const [activeResultTab, setActiveResultTab] = useState<'overview' | 'communities' | 'influential' | 'graph'>('overview')
+  const [activeResultTab, setActiveResultTab] = useState<'communities' | 'influential' | 'graph'>('communities')
   const [backendConnected, setBackendConnected] = useState(true)
   const [apiHealth, setApiHealth] = useState<ApiHealth | null>(null)
   const [checkingApiHealth, setCheckingApiHealth] = useState(false)
@@ -117,6 +175,9 @@ export default function Home() {
 
   // Mapa de colores personalizados (vacío por defecto)
   const communityColors: Record<number, string> = {}
+
+  // Colores para la gráfica de pastel de sentimiento
+  const SENTIMENT_COLORS = ["#22c55e", "#ef4444", "#a3a3a3"];
 
   // Verificar la conexión con el backend al cargar el componente
   useEffect(() => {
@@ -266,11 +327,23 @@ export default function Home() {
     // Mezclar datos de influyentes con las comunidades para tener centralidad en todos los nodos posibles
     const nodeWithCentrality = new Map()
     
+    // Primero, recopilar centralidad de los nodos influyentes
     if (networkResult.most_influential) {
       networkResult.most_influential.forEach(node => {
         nodeWithCentrality.set(node.id, node.centrality)
       })
     }
+
+    // Luego, agregar centralidad de los nodos top de cada comunidad
+    networkResult.communities?.forEach(community => {
+      if (community.top_nodes) {
+        community.top_nodes.forEach(node => {
+          if (!nodeWithCentrality.has(node.id)) {
+            nodeWithCentrality.set(node.id, node.centrality)
+          }
+        })
+      }
+    })
     
     // Mapear nodos con comunidades
     const nodes: GraphNode[] = []
@@ -278,12 +351,18 @@ export default function Home() {
     
     networkResult.communities?.forEach(community => {
       community.nodes.forEach(node => {
+        // Buscar si el nodo tiene centralidad en los nodos influyentes o top_nodes
+        const nodeCentrality = nodeWithCentrality.get(node.id)
+        
+        // Si no tiene centralidad, calcular un valor basado en su posición en la comunidad
+        const defaultCentrality = community.size ? (1 / community.size) : 0.01
+        
         // Agregar metadatos a cada nodo
         nodes.push({
           id: node.id,
           name: node.name,
           community: community.id,
-          centrality: nodeWithCentrality.get(node.id) || 0.01 // Valor por defecto bajo
+          centrality: nodeCentrality !== undefined ? nodeCentrality : defaultCentrality
         })
         
         communitiesMap.set(node.id, community.id)
@@ -401,125 +480,396 @@ export default function Home() {
     }));
   }
 
+  // Mejorar la visualización del sentimiento con la nueva paleta de colores
+  const renderSentimentPie = (sentiment: any) => {
+    if (!sentiment) return null;
+    
+    const data = [
+      { 
+        name: 'Positivo', 
+        value: sentiment.positivo, 
+        color: THEME.colors.success.medium 
+      },
+      { 
+        name: 'Negativo', 
+        value: sentiment.negativo, 
+        color: '#ef4444' // Rojo para negativo
+      },
+      { 
+        name: 'Neutro', 
+        value: sentiment.neutro, 
+        color: '#94a3b8' // Gris para neutro
+      }
+    ];
+
+    return (
+      <div className="h-[260px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <ReChartsPie>
+            <Pie
+              data={data}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              outerRadius={80}
+              label={({ name, value }) => `${name} ${(value * 100).toFixed(0)}%`}
+              labelLine={false}
+            >
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.color} />
+              ))}
+            </Pie>
+            <RechartsTooltip
+              contentStyle={{ backgroundColor: '#ffffff', }}
+              formatter={(value: number) => `${(value * 100).toFixed(1)}%`} 
+            />
+            <Legend 
+              verticalAlign="bottom" 
+              height={36}
+              formatter={(value: string) => (
+                <span className="text-sm font-medium">{value}</span>
+              )}
+            />
+          </ReChartsPie>
+        </ResponsiveContainer>
+      </div>
+    );
+  };
+
+  // Panel de insights y sentimiento mejorado
+  const renderInsightsAndSentiment = () => {
+    if (!networkResult || networkResult.error) return null;
+    const m = networkResult.metrics;
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <Card className={`${THEME.card.base} ${THEME.card.gradient(THEME.colors.warning.bg)}`}>
+          <CardHeader className="border-b border-amber-100 dark:border-amber-800">
+            <CardTitle className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
+              <Lightbulb className="w-5 h-5" />
+              Insights principales
+            </CardTitle>
+            <CardDescription className="text-amber-600 dark:text-amber-300">
+              Descubrimientos clave del análisis
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="px-6 pb-6 pt-0">
+            <ul className="space-y-3">
+              {m.insights?.slice(0, 3).map((insight, i) => (
+                <li key={i} className="flex items-center justify-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0 mt-1">
+                    <span className="text-sm font-bold text-amber-600">{i + 1}</span>
+                  </div>
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-200 flex-1">
+                    {insight}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+
+        <Card className={`${THEME.card.base} ${THEME.card.gradient(THEME.colors.success.bg)}`}>
+          <CardHeader className="border-b border-green-100 dark:border-green-800">
+            <CardTitle className="flex items-center gap-2 text-green-800 dark:text-green-200">
+              <PieChart className="w-5 h-5" />
+              Análisis de sentimiento
+            </CardTitle>
+            <CardDescription className="text-green-600 dark:text-green-300">
+              Distribución del tono en la conversación
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-6">
+            {renderSentimentPie(m.sentiment)}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
+  // Mejorar las secciones de contenido y sentimiento para mostrar solo top 3 y explicación
+  const renderContentSection = () => {
+    if (!networkResult || networkResult.error) return null
+    const m = networkResult.metrics
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Hashtags más usados</CardTitle>
+            <CardDescription>Los hashtags más relevantes en la conversación.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul>
+              {m.top_hashtags?.slice(0, 3).map(([tag, count], i) => (
+                <li key={i} className="font-mono">#{tag} <span className="text-gray-500">({count})</span></li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Palabras clave</CardTitle>
+            <CardDescription>Palabras más repetidas (sin stopwords).</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {m.top_words?.slice(0, 5).map(([word, count], i) => (
+                <span key={i} className="bg-gray-200 dark:bg-gray-700 rounded px-2 py-1 text-sm">{word}</span>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>URLs más compartidas</CardTitle>
+            <CardDescription>Enlaces más difundidos en los tweets.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul>
+              {m.top_urls?.slice(0, 3).map(([url, count], i) => (
+                <li key={i}><a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">{url}</a> <span className="text-gray-500">({count})</span></li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Usuarios más activos</CardTitle>
+            <CardDescription>Usuarios que más han publicado/interactuado.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul>
+              {m.top_active_users?.slice(0, 3).map(([user, count], i) => (
+                <li key={i}>@{user} <span className="text-gray-500">({count})</span></li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Mejorar las cards de sentimiento para que sean más grandes, visuales y con enlaces claros
+  const renderSentimentSection = () => {
+    if (!networkResult || networkResult.error) return null;
+    const m = networkResult.metrics;
+    const positivos = m.sentiment_examples?.positivos || [];
+    const negativos = m.sentiment_examples?.negativos || [];
+    if (positivos.length === 0 && negativos.length === 0) return null;
+
+    const renderTweetCard = (tweet: any, sentiment: 'positivo' | 'negativo') => {
+      const isPositive = sentiment === 'positivo';
+      const colorTheme = isPositive ? THEME.colors.success : {
+        bg: 'from-red-50 to-white dark:from-red-900/40 dark:to-gray-950',
+        border: 'border-red-100 dark:border-red-800',
+        text: {
+          primary: 'text-red-800 dark:text-red-200',
+          secondary: 'text-red-600 dark:text-red-300'
+        }
+      };
+
+      return (
+        <Card className={`${THEME.card.base} ${THEME.card.gradient(isPositive ? THEME.colors.success.bg : colorTheme.bg)} p-2`}>
+          <CardHeader className={`flex flex-row items-center gap-4 pb-2 border-b ${isPositive ? 'border-green-100 dark:border-green-800' : colorTheme.border}`}>
+            <div className={`w-16 h-16 rounded-2xl ${isPositive ? 'bg-green-500/90' : 'bg-red-500/90'} text-white flex items-center justify-center shadow-lg`}>
+              {isPositive ? <Smile className="w-9 h-9" /> : <Frown className="w-9 h-9" />}
+            </div>
+            <div>
+              <CardTitle className={`text-xl font-bold ${isPositive ? 'text-green-800 dark:text-green-200' : colorTheme.text.primary}`}>
+                Tweet {isPositive ? 'positivo' : 'negativo'} destacado
+              </CardTitle>
+              <CardDescription className={isPositive ? 'text-green-600 dark:text-green-300 font-medium' : colorTheme.text.secondary}>
+                {tweet.engagement_score > 0 ? `Tweet con ${tweet.engagement_score.toFixed(0)} puntos de engagement` : 'Tweet destacado de la conversación'}
+              </CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="px-2 pb-2">
+            <div className="bg-white dark:bg-gray-900/60 rounded-2xl p-6 shadow-md space-y-4">
+              <blockquote className="text-lg font-medium text-gray-900 dark:text-gray-100 leading-relaxed">
+                "{tweet.text}"
+              </blockquote>
+              <div className={`flex items-center justify-between pt-2 border-t ${isPositive ? 'border-green-100 dark:border-green-800' : colorTheme.border}`}>
+                <div className="flex items-center gap-3">
+                  <a 
+                    href={`https://twitter.com/${tweet.author}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`${isPositive ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'} font-semibold hover:underline flex items-center gap-2`}
+                  >
+                    <span className={`w-8 h-8 rounded-full ${isPositive ? 'bg-green-100 dark:bg-green-900' : 'bg-red-100 dark:bg-red-900'} flex items-center justify-center`}>
+                      <span className="text-sm">@</span>
+                    </span>
+                    <div className="flex flex-col">
+                      <span>{tweet.author_name}</span>
+                      <span className="text-sm opacity-75">@{tweet.author}</span>
+                    </div>
+                  </a>
+                  <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                    isPositive 
+                      ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                      : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                  }`}>
+                    {isPositive ? 'Positivo' : 'Negativo'}
+                  </span>
+                </div>
+                <a
+                  href={`https://twitter.com/i/web/status/${tweet.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`flex items-center gap-1 text-sm font-medium ${
+                    isPositive 
+                      ? 'text-green-600 dark:text-green-400'
+                      : 'text-red-600 dark:text-red-400'
+                  } hover:underline`}
+                >
+                  Ver tweet
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    };
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {positivos.length > 0 && renderTweetCard(positivos[0], 'positivo')}
+        {negativos.length > 0 && renderTweetCard(negativos[0], 'negativo')}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
-      {/* Header componetizado */}
       <Header 
         backendConnected={backendConnected}
         apiHealth={apiHealth}
         checkingApiHealth={checkingApiHealth}
         onCheckApiHealth={checkApiHealth}
       />
+      
+      {/* Banner de Tendencias */}
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-900 dark:to-indigo-900">
+        <div className="container mx-auto py-4 px-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center">
+                <TrendingUp className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h2 className="text-white font-bold text-lg">¿Buscas temas en tendencia?</h2>
+                <p className="text-blue-100">Descubre qué está pasando ahora mismo en Twitter/X</p>
+              </div>
+            </div>
+            <a
+              href="https://twitter.com/explore/tabs/trending"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-white text-blue-600 hover:bg-blue-50 px-6 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-colors duration-200"
+            >
+              Ver Tendencias
+              <ExternalLink className="w-4 h-4" />
+            </a>
+          </div>
+        </div>
+      </div>
 
       <main className="container mx-auto py-6">
         <div className="space-y-6">
-          {/* Advertencia de backend componetizada */}
           <BackendWarning backendConnected={backendConnected} />
-          
-          {/* Control Panel */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Análisis de Red Social</CardTitle>
-              <CardDescription>
-                Busque usuarios o analice temas para descubrir conexiones y comunidades.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Network Analysis componetizado */}
-                <NetworkSearchForm
-                  query={query}
-                  maxTweets={maxTweets}
-                  loading={loading}
-                  backendConnected={backendConnected}
-                  onQueryChange={setQuery}
-                  onMaxTweetsChange={setMaxTweets}
-                  onSubmit={handleNetworkAnalysis}
-                />
+          <Tabs defaultValue="search" className="w-full">
+            <TabsList className="flex h-10 justify-start px-6 w-full border-b-0 bg-transparent mb-6">
+              <TabsTrigger value="search" className="cursor-pointer data-[state=active]:border-indigo-500 border-b-2 border-transparent">
+                Búsqueda y Análisis
+              </TabsTrigger>
+            </TabsList>
 
-                {/* User Search componetizado */}
-                <div className="space-y-4">
-                  <UserSearchForm
-                    username={username}
-                    onUsernameChange={setUsername}
-                    onSubmit={handleUserSearch}
-                    backendConnected={backendConnected}
-                  />
-                  
-                  {/* User Result componetizado */}
-                  <UserResult userResult={userResult} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Results */}
-          {networkResult && !loading && (
-            <Card>
-              <CardHeader className="border-b">
-                <CardTitle>Resultados: "{networkResult.query}"</CardTitle>
-              </CardHeader>
-
-              {networkResult.error ? (
-                <CardContent className="pt-6">
-                  {/* Error componetizado */}
-                  <NetworkError 
-                    query={networkResult.query}
-                    error={networkResult.error}
-                    message={networkResult.message}
-                  />
-                </CardContent>
-              ) : (
-                <>
-                  {/* Metrics Summary componetizado */}
-                  <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+            <TabsContent value="search">
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Análisis de Red Social</CardTitle>
+                    <CardDescription>
+                      Busca usuarios o analiza temas para descubrir conexiones, comunidades y tendencias.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <NetworkSearchForm
+                        query={query}
+                        maxTweets={maxTweets}
+                        loading={loading}
+                        backendConnected={backendConnected}
+                        onQueryChange={setQuery}
+                        onMaxTweetsChange={setMaxTweets}
+                        onSubmit={handleNetworkAnalysis}
+                      />
+                      <div className="space-y-4">
+                        <UserSearchForm
+                          username={username}
+                          onUsernameChange={setUsername}
+                          onSubmit={handleUserSearch}
+                          backendConnected={backendConnected}
+                        />
+                        <UserResult userResult={userResult} />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                {/* Panel de resumen visual */}
+                {networkResult && !loading && !networkResult.error && (
+                  <div className="space-y-8">
                     <SummaryMetrics 
-                      metrics={networkResult.metrics}
-                      communitiesCount={networkResult.communities?.length || 0}
+                      metrics={networkResult.metrics} 
+                      communitiesCount={networkResult.communities?.length || 0} 
                     />
+                    {renderInsightsAndSentiment()}
+                    {renderSentimentSection()}
                   </div>
-
-                  {/* Navigation Tabs */}
+                )}
+                {/* Panel de comunidades, usuarios influyentes y grafo */}
+                {networkResult && !loading && (
                   <Tabs value={activeResultTab} onValueChange={(value) => setActiveResultTab(value as any)} className="w-full">
                     <div className="border-b">
                       <TabsList className="flex h-10 justify-start px-6 w-full border-b-0 bg-transparent">
-                        <TabsTrigger value="overview" className="cursor-pointer data-[state=active]:border-indigo-500 border-b-2 border-transparent">
-                          Visión general
+                        <TabsTrigger value="communities" className="cursor-pointer data-[state=active]:border-indigo-500 border-b-2 border-transparent">
+                          Comunidades
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <HelpCircle className="inline h-4 w-4 ml-1 text-gray-400 cursor-pointer" />
+                              </TooltipTrigger>
+                              <TooltipContent>Grupos de usuarios que interactúan más entre sí.</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </TabsTrigger>
                         <TabsTrigger value="influential" className="cursor-pointer data-[state=active]:border-indigo-500 border-b-2 border-transparent">
                           Usuarios influyentes
-                        </TabsTrigger>
-                        <TabsTrigger value="communities" className="cursor-pointer data-[state=active]:border-indigo-500 border-b-2 border-transparent">
-                          Comunidades
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <HelpCircle className="inline h-4 w-4 ml-1 text-gray-400 cursor-pointer" />
+                              </TooltipTrigger>
+                              <TooltipContent>Usuarios con mayor centralidad en la red.</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </TabsTrigger>
                         <TabsTrigger value="graph" className="cursor-pointer data-[state=active]:border-indigo-500 border-b-2 border-transparent">
                           <Share2 className="h-4 w-4 mr-2" />
                           Visualización
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <HelpCircle className="inline h-4 w-4 ml-1 text-gray-400 cursor-pointer" />
+                              </TooltipTrigger>
+                              <TooltipContent>Grafo interactivo de la red social.</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </TabsTrigger>
                       </TabsList>
                     </div>
-
-                    {/* Overview Tab componetizado */}
-                    <TabsContent value="overview" className="p-6">
-                      <OverviewTab 
-                        query={networkResult.query}
-                        metrics={networkResult.metrics}
-                        communitiesCount={networkResult.communities?.length || 0}
-                        mostInfluential={networkResult.most_influential || []}
-                      />
-                    </TabsContent>
-
-                    {/* Influential Users Tab componetizado */}
-                    <TabsContent value="influential" className="p-6">
-                      <InfluentialUsersTab 
-                        influentialUsers={networkResult.most_influential || []}
-                        communities={networkResult.communities || []}
-                        communitySizeRanking={communitySizeRanking}
-                        DEFAULT_COMMUNITY_COLORS={DEFAULT_COMMUNITY_COLORS}
-                      />
-                    </TabsContent>
-
-                    {/* Communities Tab componetizado */}
                     <TabsContent value="communities" className="p-6">
                       <CommunitiesTab 
                         communities={networkResult.communities || []}
@@ -530,19 +880,126 @@ export default function Home() {
                         onExpandCommunity={expandCommunity}
                       />
                     </TabsContent>
-
-                    {/* Graph Visualization Tab componetizado */}
-                    <TabsContent value="graph" className="p-6">
-                      <GraphTab 
-                        graphData={graphData}
+                    <TabsContent value="influential" className="p-6">
+                      <InfluentialUsersTab 
+                        influentialUsers={networkResult.most_influential || []}
+                        communities={networkResult.communities || []}
                         communitySizeRanking={communitySizeRanking}
+                        DEFAULT_COMMUNITY_COLORS={DEFAULT_COMMUNITY_COLORS}
                       />
                     </TabsContent>
+                    <TabsContent value="graph" className="p-6">
+                      <div className="space-y-6">
+                        {/* Banner informativo - Sin hover */}
+                        <div className="bg-gradient-to-r from-indigo-50 to-violet-50 dark:from-indigo-900/20 dark:to-violet-900/20 p-6 rounded-2xl border border-indigo-100 dark:border-indigo-800">
+                          <h3 className="text-xl font-bold text-indigo-800 dark:text-indigo-200 mb-2 flex items-center gap-2">
+                            <Network className="w-6 h-6" />
+                            Visualización de la red
+                          </h3>
+                          <p className="text-indigo-600 dark:text-indigo-300">
+                            Grafo interactivo que muestra las conexiones entre usuarios. Los colores representan comunidades y el tamaño de los nodos indica su influencia.
+                          </p>
+                        </div>
+
+                        {/* Métricas - Sin hover */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          <Card className={`${THEME.card.base} ${THEME.card.gradient(THEME.colors.info.bg)}`}>
+                            <CardContent className="p-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center">
+                                  <Network className="w-5 h-5 text-indigo-600" />
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium text-indigo-600 dark:text-indigo-300">Nodos</p>
+                                  <p className="text-2xl font-bold text-indigo-700 dark:text-indigo-200">
+                                    {graphData.nodes.length}
+                                  </p>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+
+                          <Card className={`${THEME.card.base} ${THEME.card.gradient(THEME.colors.info.bg)}`}>
+                            <CardContent className="p-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center">
+                                  <Share2 className="w-5 h-5 text-indigo-600" />
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium text-indigo-600 dark:text-indigo-300">Enlaces</p>
+                                  <p className="text-2xl font-bold text-indigo-700 dark:text-indigo-200">
+                                    {graphData.links.length}
+                                  </p>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+
+                          <Card className={`${THEME.card.base} ${THEME.card.gradient(THEME.colors.info.bg)}`}>
+                            <CardContent className="p-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center">
+                                  <Network className="w-5 h-5 text-indigo-600" />
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium text-indigo-600 dark:text-indigo-300">Densidad</p>
+                                  <p className="text-2xl font-bold text-indigo-700 dark:text-indigo-200">
+                                    {(graphData.links.length / (graphData.nodes.length * (graphData.nodes.length - 1) / 2)).toFixed(4)}
+                                  </p>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </div>
+
+                        {/* Contenedor del grafo - Solo esta parte es interactiva */}
+                        <Card className={`${THEME.card.base} ${THEME.card.gradient(THEME.colors.primary.bg)}`}>
+                          <CardHeader className="border-b border-blue-100 dark:border-blue-800">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <CardTitle className="text-lg text-blue-800 dark:text-blue-200 flex items-center gap-2">
+                                  <Share2 className="w-5 h-5" />
+                                  Grafo de conexiones
+                                </CardTitle>
+                                <CardDescription className="text-blue-600 dark:text-blue-300">
+                                  {graphData.nodes.length} usuarios y {graphData.links.length} conexiones
+                                </CardDescription>
+                              </div>
+                              
+                            </div>
+                          </CardHeader>
+                          <CardContent className="p-0 relative">
+                            <div className="w-full h-[calc(100vh-300px)] min-h-[700px] bg-gradient-to-br from-gray-50 to-blue-50/20 dark:from-gray-900 dark:to-blue-900/20">
+                              <NetworkGraph 
+                                nodes={graphData.nodes} 
+                                links={graphData.links} 
+                                communitySizeRanking={communitySizeRanking}
+                              />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    </TabsContent>
                   </Tabs>
-                </>
-              )}
-            </Card>
-          )}
+                )}
+                {/* Error de red */}
+                {networkResult && networkResult.error && (
+                  <Card>
+                    <CardHeader className="border-b">
+                      <CardTitle>Resultados: "{networkResult.query}"</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-6">
+                      <NetworkError 
+                        query={networkResult.query}
+                        error={networkResult.error}
+                        message={networkResult.message}
+                      />
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
       </main>
     </div>

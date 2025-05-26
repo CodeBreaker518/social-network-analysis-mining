@@ -70,28 +70,37 @@ export default function NetworkGraph({
   onNodeClick 
 }: NetworkGraphProps) {
   const graphRef = useRef<any>(null)
-  const [dimensions, setDimensions] = useState({ width: 0, height: 500 })
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null)
   const [highlightNodes, setHighlightNodes] = useState<Set<any>>(new Set())
   const [highlightLinks, setHighlightLinks] = useState<Set<any>>(new Set())
   const [graphReady, setGraphReady] = useState(false)
 
-  // Actualizar dimensiones basadas en el contenedor
+  // Actualizar dimensiones usando ResizeObserver
   useEffect(() => {
+    if (!containerRef.current) return
+
     const updateDimensions = () => {
-      const graphElement = document.getElementById('graph-container')
-      if (graphElement) {
-        setDimensions({
-          width: graphElement.clientWidth,
-          height: 500
-        })
+      if (containerRef.current) {
+        const { width, height } = containerRef.current.getBoundingClientRect()
+        setDimensions({ width, height })
       }
     }
 
-    window.addEventListener('resize', updateDimensions)
+    // Crear ResizeObserver para monitorear cambios en el contenedor
+    const resizeObserver = new ResizeObserver(updateDimensions)
+    resizeObserver.observe(containerRef.current)
+
+    // Actualización inicial
     updateDimensions()
-    
-    return () => window.removeEventListener('resize', updateDimensions)
+
+    return () => {
+      if (containerRef.current) {
+        resizeObserver.unobserve(containerRef.current)
+      }
+      resizeObserver.disconnect()
+    }
   }, [])
 
   // Preparar los datos del grafo de manera estable con useMemo
@@ -99,7 +108,8 @@ export default function NetworkGraph({
     // Procesar nodos y enlaces
     const processedNodes = nodes.map(node => ({
       ...node,
-      centrality: node.centrality || 0.01
+      // Solo asignar valor por defecto si no existe centralidad
+      centrality: node.centrality === undefined ? 0.01 : node.centrality
     }));
     
     const processedLinks = links.map(link => ({
@@ -244,207 +254,206 @@ export default function NetworkGraph({
 
   // Obtener tamaño de nodo basado en centralidad
   const getNodeSize = useCallback((node: any) => {
-    const baseSize = 4;
+    const baseSize = 3;
     
-    if (node.centrality) {
-      return baseSize + Math.min(node.centrality * 15, 12);
-    }
+    if (!node.centrality) return baseSize;
     
-    return baseSize;
+    // Escalar la centralidad de manera más pronunciada
+    // Usamos una escala logarítmica para manejar mejor los valores extremos
+    const scaledSize = Math.log10(1 + node.centrality * 100) * 8;
+    
+    // Aseguramos un tamaño mínimo y máximo razonable
+    return Math.max(baseSize, Math.min(scaledSize, 25));
   }, []);
 
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="p-0">
-        <div id="graph-container" className="relative">
-          {dimensions.width > 0 && (
-            <ForceGraph2D
-              ref={graphRef}
-              graphData={graphData}
-              width={dimensions.width}
-              height={dimensions.height}
-              nodeId="id"
-              nodeRelSize={5}
-              nodeLabel={(node: any) => `@${node.name}`}
-              nodeColor={(node: any) => getNodeColor(node)}
-              nodeVal={(node: any) => getNodeSize(node)}
-              
-              linkDirectionalArrowLength={3}
-              linkDirectionalArrowRelPos={1}
-              linkCurvature={0.1}
-              linkWidth={(link: any) => highlightLinks.has(link) ? 2 : 0.8}
-              linkColor={(link: any) => getLinkColor(link)}
-              
-              // Eventos de interacción
-              onNodeHover={(node: any) => handleNodeHover(node)}
-              onNodeClick={(node: any) => handleNodeClick(node)}
-              
-              // Física del grafo
-              d3AlphaDecay={0.15}
-              d3VelocityDecay={0.6}
-              warmupTicks={50}
-              cooldownTicks={50}
-              cooldownTime={2000}
-              
-              // Configuración de interacción importante
-              enableNodeDrag={true}
-              enableZoomInteraction={true}
-              enablePanInteraction={true}
-              minZoom={0.5}
-              maxZoom={5}
-              onEngineStop={() => {
-                if (!graphReady) setGraphReady(true);
-              }}
-              
-              // Partículas en enlaces destacados
-              linkDirectionalParticles={link => highlightLinks.has(link) ? 4 : 0}
-              linkDirectionalParticleWidth={2}
-              linkDirectionalParticleSpeed={0.005}
-              linkDirectionalParticleColor={() => HIGHLIGHT_COLOR}
-              
-              // Canvas para nodos
-              nodeCanvasObject={(node: any, ctx, globalScale) => {
-                const size = getNodeSize(node);
-                const fontSize = 12/globalScale;
-                const isHighlighted = highlightNodes.has(node);
-                
-                // Dibujar círculo del nodo
-                ctx.beginPath();
-                ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
-                ctx.fillStyle = getNodeColor(node);
-                ctx.fill();
-                
-                // Dibujar etiqueta para nodos destacados o cuando hay zoom suficiente
-                if (isHighlighted || globalScale > 1.5) {
-                  const label = node.name;
-                  
-                  ctx.font = `${isHighlighted ? 'bold ' : ''}${fontSize}px Arial`;
-                  ctx.textAlign = 'center';
-                  ctx.textBaseline = 'middle';
-                  
-                  // Dibujar contorno para mejor legibilidad
-                  ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
-                  ctx.lineWidth = 2 / globalScale;
-                  ctx.strokeText(label, node.x, node.y + 10);
-                  
-                  // Dibujar texto
-                  ctx.fillStyle = isHighlighted ? 'white' : 'rgba(255, 255, 255, 0.9)';
-                  ctx.fillText(label, node.x, node.y + 10);
-                }
-              }}
-              
-              // Especificar que se usa un renderizador personalizado
-              nodeCanvasObjectMode={() => 'replace'}
-            />
-          )}
+    <div ref={containerRef} className="w-full h-full">
+      {dimensions.width > 0 && dimensions.height > 0 && (
+        <ForceGraph2D
+          ref={graphRef}
+          width={dimensions.width}
+          height={dimensions.height}
+          graphData={graphData}
+          nodeId="id"
+          nodeRelSize={5}
+          nodeLabel={(node: any) => `@${node.name}`}
+          nodeColor={(node: any) => getNodeColor(node)}
+          nodeVal={(node: any) => getNodeSize(node)}
           
-          {/* Panel de información de nodo */}
-          {hoveredNode && (
-            <div className="absolute bottom-4 left-4 bg-white dark:bg-gray-800 p-3 rounded-md shadow-md text-sm">
-              <div className="font-bold mb-1">@{hoveredNode.name}</div>
-              {hoveredNode.community !== undefined && (
-                <div className="flex items-center">
-                  <div className="flex items-center">
-                    <span className="mr-2">Comunidad:</span>
-                    <div 
-                      className="h-3 w-3 mr-1 rounded-full" 
-                      style={{ 
-                        backgroundColor: communityColors[hoveredNode.community] || 
-                          DEFAULT_COMMUNITY_COLORS[hoveredNode.community % DEFAULT_COMMUNITY_COLORS.length]
-                      }}
-                    ></div>
-                    <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 dark:bg-gray-700">
-                      #{communitySizeRanking[hoveredNode.community] || hoveredNode.community + 1}
-                    </span>
-                  </div>
-                </div>
-              )}
-              {hoveredNode.centrality !== undefined && (
-                <div className="mt-1">
-                  <div className="flex items-center">
-                    <span className="mr-2">Relevancia:</span>
-                    <span className="font-medium">{hoveredNode.centrality.toFixed(4)}</span>
-                  </div>
-                  <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    La centralidad mide la influencia de este usuario en la red. Valores más altos indican mayor relevancia.
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          linkDirectionalArrowLength={3}
+          linkDirectionalArrowRelPos={1}
+          linkCurvature={0.1}
+          linkWidth={(link: any) => highlightLinks.has(link) ? 2 : 0.8}
+          linkColor={(link: any) => getLinkColor(link)}
           
-          {/* Leyenda */}
-          <div className="absolute top-4 right-4 bg-white dark:bg-gray-800 p-3 rounded-md shadow-md text-xs">
-            <div className="mb-2 font-medium text-sm">Leyenda</div>
-            <div className="grid grid-cols-1 gap-1.5">
-              <div className="flex flex-col space-y-1.5 mb-2">
-                <div className="text-xs font-medium text-gray-600 dark:text-gray-300">Tipos de conexión:</div>
-                <div className="flex items-center">
-                  <span className="h-3 w-3 mr-2 rounded-full" style={{ backgroundColor: CONNECTION_COLORS.retweet }}></span>
-                  <span>Retweet - Cuando un usuario comparte el tweet de otro</span>
-                </div>
-                <div className="flex items-center">
-                  <span className="h-3 w-3 mr-2 rounded-full" style={{ backgroundColor: CONNECTION_COLORS.mention }}></span>
-                  <span>Mención - Cuando un usuario menciona a otro (@usuario)</span>
-                </div>
-                <div className="flex items-center">
-                  <span className="h-3 w-3 mr-2 rounded-full" style={{ backgroundColor: CONNECTION_COLORS.reply }}></span>
-                  <span>Respuesta - Cuando un usuario responde al tweet de otro</span>
-                </div>
-                <div className="flex items-center">
-                  <span className="h-3 w-3 mr-2 rounded-full" style={{ backgroundColor: CONNECTION_COLORS.quote }}></span>
-                  <span>Cita - Cuando un usuario cita el tweet de otro</span>
-                </div>
-              </div>
-
-              <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mb-1"></div>
-
-              <div className="flex flex-col space-y-1.5">
-                <div className="text-xs font-medium text-gray-600 dark:text-gray-300">Nodos (usuarios):</div>
-                <div className="flex items-center">
-                  <div className="flex items-center mr-2">
-                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: DEFAULT_NODE_COLOR }}></span>
-                    <span className="mx-1">→</span>
-                    <span className="h-5 w-5 rounded-full" style={{ backgroundColor: DEFAULT_NODE_COLOR }}></span>
-                  </div>
-                  <span>Tamaño = Relevancia/influencia del usuario</span>
-                </div>
-                <div className="flex items-center">
-                  <div className="flex space-x-1 mr-2">
-                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: DEFAULT_COMMUNITY_COLORS[0] }}></span>
-                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: DEFAULT_COMMUNITY_COLORS[1] }}></span>
-                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: DEFAULT_COMMUNITY_COLORS[2] }}></span>
-                  </div>
-                  <span>Color = Grupo/comunidad a la que pertenece</span>
-                </div>
-                <div className="flex items-center">
-                  <div className="flex items-center mr-2">
-                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: HIGHLIGHT_COLOR }}></span>
-                  </div>
-                  <span>Naranja = Nodo destacado (al pasar el cursor)</span>
-                </div>
-              </div>
-
-              <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mt-1"></div>
+          // Eventos de interacción
+          onNodeHover={(node: any) => handleNodeHover(node)}
+          onNodeClick={(node: any) => handleNodeClick(node)}
+          
+          // Física del grafo
+          d3AlphaDecay={0.15}
+          d3VelocityDecay={0.6}
+          warmupTicks={50}
+          cooldownTicks={50}
+          cooldownTime={2000}
+          
+          // Configuración de interacción importante
+          enableNodeDrag={true}
+          enableZoomInteraction={true}
+          enablePanInteraction={true}
+          minZoom={0.5}
+          maxZoom={5}
+          onEngineStop={() => {
+            if (!graphReady) setGraphReady(true);
+          }}
+          
+          // Partículas en enlaces destacados
+          linkDirectionalParticles={link => highlightLinks.has(link) ? 4 : 0}
+          linkDirectionalParticleWidth={2}
+          linkDirectionalParticleSpeed={0.005}
+          linkDirectionalParticleColor={() => HIGHLIGHT_COLOR}
+          
+          // Canvas para nodos
+          nodeCanvasObject={(node: any, ctx, globalScale) => {
+            const size = getNodeSize(node);
+            const fontSize = 12/globalScale;
+            const isHighlighted = highlightNodes.has(node);
+            
+            // Dibujar círculo del nodo
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+            ctx.fillStyle = getNodeColor(node);
+            ctx.fill();
+            
+            // Dibujar etiqueta para nodos destacados o cuando hay zoom suficiente
+            if (isHighlighted || globalScale > 1.5) {
+              const label = node.name;
               
-              <div className="text-xs text-gray-500 dark:text-gray-400 pt-1">
-                <span>• Puede arrastrar nodos para reorganizar</span><br/>
-                <span>• Use la rueda del ratón para zoom</span>
+              ctx.font = `${isHighlighted ? 'bold ' : ''}${fontSize}px Arial`;
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              
+              // Dibujar contorno para mejor legibilidad
+              ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+              ctx.lineWidth = 2 / globalScale;
+              ctx.strokeText(label, node.x, node.y + 10);
+              
+              // Dibujar texto
+              ctx.fillStyle = isHighlighted ? 'white' : 'rgba(255, 255, 255, 0.9)';
+              ctx.fillText(label, node.x, node.y + 10);
+            }
+          }}
+          
+          // Especificar que se usa un renderizador personalizado
+          nodeCanvasObjectMode={() => 'replace'}
+        />
+      )}
+      
+      {/* Panel de información de nodo */}
+      {hoveredNode && (
+        <div className="absolute bottom-4 left-4 bg-white dark:bg-gray-800 p-3 rounded-md shadow-md text-sm">
+          <div className="font-bold mb-1">@{hoveredNode.name}</div>
+          {hoveredNode.community !== undefined && (
+            <div className="flex items-center">
+              <div className="flex items-center">
+                <span className="mr-2">Comunidad:</span>
+                <div 
+                  className="h-3 w-3 mr-1 rounded-full" 
+                  style={{ 
+                    backgroundColor: communityColors[hoveredNode.community] || 
+                      DEFAULT_COMMUNITY_COLORS[hoveredNode.community % DEFAULT_COMMUNITY_COLORS.length]
+                  }}
+                ></div>
+                <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 dark:bg-gray-700">
+                  #{communitySizeRanking[hoveredNode.community] || hoveredNode.community + 1}
+                </span>
               </div>
             </div>
-          </div>
-          
-          {/* Pantalla de carga */}
-          {!graphReady && (
-            <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white">
-              <div className="flex flex-col items-center">
-                <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-white mb-3"></div>
-                <div>Generando visualización...</div>
+          )}
+          {hoveredNode.centrality !== undefined && (
+            <div className="mt-1">
+              <div className="flex items-center">
+                <span className="mr-2">Relevancia:</span>
+                <span className="font-medium">{hoveredNode.centrality.toFixed(4)}</span>
+              </div>
+              <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                La centralidad mide la influencia de este usuario en la red. Valores más altos indican mayor relevancia.
               </div>
             </div>
           )}
         </div>
-      </CardContent>
-    </Card>
+      )}
+      
+      {/* Leyenda */}
+      <div className="absolute top-4 right-4 bg-white dark:bg-gray-800 p-3 rounded-md shadow-md text-xs">
+        <div className="mb-2 font-medium text-sm">Leyenda</div>
+        <div className="grid grid-cols-1 gap-1.5">
+          <div className="flex flex-col space-y-1.5 mb-2">
+            <div className="text-xs font-medium text-gray-600 dark:text-gray-300">Tipos de conexión:</div>
+            <div className="flex items-center">
+              <span className="h-3 w-3 mr-2 rounded-full" style={{ backgroundColor: CONNECTION_COLORS.retweet }}></span>
+              <span>Retweet - Cuando un usuario comparte el tweet de otro</span>
+            </div>
+            <div className="flex items-center">
+              <span className="h-3 w-3 mr-2 rounded-full" style={{ backgroundColor: CONNECTION_COLORS.mention }}></span>
+              <span>Mención - Cuando un usuario menciona a otro (@usuario)</span>
+            </div>
+            <div className="flex items-center">
+              <span className="h-3 w-3 mr-2 rounded-full" style={{ backgroundColor: CONNECTION_COLORS.reply }}></span>
+              <span>Respuesta - Cuando un usuario responde al tweet de otro</span>
+            </div>
+            <div className="flex items-center">
+              <span className="h-3 w-3 mr-2 rounded-full" style={{ backgroundColor: CONNECTION_COLORS.quote }}></span>
+              <span>Cita - Cuando un usuario cita el tweet de otro</span>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mb-1"></div>
+
+          <div className="flex flex-col space-y-1.5">
+            <div className="text-xs font-medium text-gray-600 dark:text-gray-300">Nodos (usuarios):</div>
+            <div className="flex items-center">
+              <div className="flex items-center mr-2">
+                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: DEFAULT_NODE_COLOR }}></span>
+                <span className="mx-1">→</span>
+                <span className="h-5 w-5 rounded-full" style={{ backgroundColor: DEFAULT_NODE_COLOR }}></span>
+              </div>
+              <span>Tamaño = Relevancia/influencia del usuario</span>
+            </div>
+            <div className="flex items-center">
+              <div className="flex space-x-1 mr-2">
+                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: DEFAULT_COMMUNITY_COLORS[0] }}></span>
+                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: DEFAULT_COMMUNITY_COLORS[1] }}></span>
+                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: DEFAULT_COMMUNITY_COLORS[2] }}></span>
+              </div>
+              <span>Color = Grupo/comunidad a la que pertenece</span>
+            </div>
+            <div className="flex items-center">
+              <div className="flex items-center mr-2">
+                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: HIGHLIGHT_COLOR }}></span>
+              </div>
+              <span>Naranja = Nodo destacado (al pasar el cursor)</span>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mt-1"></div>
+          
+          <div className="text-xs text-gray-500 dark:text-gray-400 pt-1">
+            <span>• Puede arrastrar nodos para reorganizar</span><br/>
+            <span>• Use la rueda del ratón para zoom</span>
+          </div>
+        </div>
+      </div>
+      
+      {/* Pantalla de carga */}
+      {!graphReady && (
+        <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white">
+          <div className="flex flex-col items-center">
+            <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-white mb-3"></div>
+            <div>Generando visualización...</div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 } 
