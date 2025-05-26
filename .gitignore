@@ -997,4 +997,104 @@ lerna-debug.log*
 .tmp/
 .bun
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.env
+venv/
+.venv/
+
+# Base de datos
+backend/data/
+*.db
+*.sqlite3
+
+# Node
+node_modules/
+.next/
+out/
+build/
+.DS_Store
+*.pem
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+log/
+
 # End of https://www.toptal.com/developers/gitignore/api/macos,windows,linux,node,visualstudio,visualstudiocode,venv,webstorm+all,jetbrains+all,jetbrains,pycharm,pycharm+all
+
+# Archivos de entorno y configuración
+.env
+.env.local
+.env.*.local
+
+# Archivos de caché y temporales
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.cache/
+*.cache
+
+# Archivos de dependencias
+venv/
+env/
+.venv/
+node_modules/
+
+# Archivos de logs
+*.log
+logs/
+npm-debug.log*
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Archivos de IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Archivos específicos del proyecto
+backend/cache/
+frontend/.next/
+dist/
+build/

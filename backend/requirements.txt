@@ -7,6 +7,11 @@ python-louvain==0.16
 python-dotenv==1.0.0
 requests==2.32.3
 pydantic==2.11.4
+textblob==0.17.1
+nltk==3.8.1
+transformers==4.36.2
+torch==2.2.0
+community==1.0.0b1
 
 # Dependencias secundarias
 anyio==4.9.0
