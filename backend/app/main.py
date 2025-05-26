@@ -6,17 +6,30 @@ import tweepy
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from tweepy.errors import TooManyRequests
+import logging
+from datetime import datetime, timedelta
 
-app = FastAPI()
+# Configurar logging más eficiente
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
-# Configurar CORS
+app = FastAPI(
+    title="Social Network Mining API",
+    description="API para análisis de redes sociales en Twitter/X",
+    version="1.0.0"
+)
+
+# Configuración CORS optimizada
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permitir todas las origins para desarrollo
+    allow_origins=["http://localhost:3000"],  # Solo permitir el frontend
     allow_credentials=True,
-    allow_methods=["*"],  # Permitir todos los métodos
-    allow_headers=["*"],  # Permitir todos los headers
-    expose_headers=["*"]  # Exponer todos los headers en la respuesta
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Manejador de excepciones para errores 429 (Too Many Requests)
@@ -43,7 +56,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 class QueryRequest(BaseModel):
     query: str
-    max_tweets: int = 100
+    max_tweets: int = 50
 
 class GraphResponse(BaseModel):
     nodes: List[Dict[str, Any]]
@@ -97,11 +110,19 @@ async def analyze_tweets(query_request: QueryRequest):
     node_to_community = {}
     for i, community in enumerate(communities):
         for node in community:
-            node_to_community[node] = i
+            node_to_community[node] = i + 1  # Usar 1-based indexing para coincidir con las comunidades
             
-    # Actualizar nodos con información de comunidad
+    # Actualizar nodos con información de comunidad y métricas
     for node in nodes:
-        node["community"] = node_to_community.get(node["id"], -1)  # -1 significa sin comunidad
+        node_id = node["id"]
+        node["community"] = node_to_community.get(node_id, -1)  # -1 significa sin comunidad
+        # Agregar información de influencia si está disponible
+        if "influential_nodes" in metrics:
+            for influential in metrics["influential_nodes"]:
+                if influential["id"] == node_id:
+                    node["metrics"] = influential["metrics"]
+                    node["centrality"] = influential["centrality"]
+                    break
 
     return {
         "nodes": nodes, 
@@ -111,139 +132,71 @@ async def analyze_tweets(query_request: QueryRequest):
         "raw_response": raw_response
     }
 
+@app.get("/health")
+async def health_check():
+    if not client:
+        return {"status": "error", "api_status": "error", "message": "Twitter client not initialized"}
+    try:
+        test_response = client.get_me()
+        return {
+            "status": "ok",
+            "api_status": "ok" if test_response else "error",
+            "message": "API connection successful"
+        }
+    except Exception as e:
+        return {"status": "error", "api_status": "error", "message": str(e)}
+
 @app.get("/network_metrics/")
-async def network_metrics(query: str, max_tweets: int = 100):
-    print(f"Recibida solicitud de análisis de red para: '{query}' (max_tweets: {max_tweets})")
+async def analyze_network(
+    query: str,
+    max_tweets: int = Query(default=50, le=100)  # Limitar máximo de tweets
+):
+    logger.info(f"Recibida solicitud de análisis de red para: '{query}' (max_tweets: {max_tweets})")
     
     try:
-        # Obtener el grafo de usuarios y relaciones
         graph = get_tweets_and_build_graph(query, max_tweets)
         
-        # Obtener la respuesta original de la API si existe
-        raw_response = None
-        if hasattr(graph, 'graph') and 'raw_response' in graph.graph:
-            raw_response = graph.graph['raw_response']
-        
-        # Detectar comunidades en el grafo
-        communities = detect_communities(graph)
-        
-        # Obtener métricas del grafo
-        metrics = get_network_metrics(graph)
-        
-        # Preparar información de comunidades
-        community_info = []
-        for i, community in enumerate(communities):
-            # Obtener los nodos de esta comunidad
-            nodes_in_community = [{"id": node, "name": graph.nodes[node].get("name", "")} for node in community]
-            
-            # Ordenar por centralidad si está disponible
-            if "influential_nodes" in metrics:
-                influential_in_community = [node for node in metrics["influential_nodes"] if node["id"] in community]
-                influential_in_community = sorted(influential_in_community, key=lambda x: x["centrality"], reverse=True)
-                
-                if influential_in_community:
-                    community_info.append({
-                        "id": i,
-                        "size": len(community),
-                        "nodes": nodes_in_community[:10],  # Limitar a 10 nodos para no sobrecargar
-                        "top_nodes": influential_in_community[:3]  # Top 3 nodos influyentes
-                    })
-                else:
-                    community_info.append({
-                        "id": i,
-                        "size": len(community),
-                        "nodes": nodes_in_community[:10]
-                    })
-            else:
-                community_info.append({
-                    "id": i,
-                    "size": len(community),
-                    "nodes": nodes_in_community[:10]
-                })
-        
-        # Ordenar comunidades por tamaño
-        community_info.sort(key=lambda x: x["size"], reverse=True)
-        
-        return {
-            "query": query,
-            "metrics": metrics,
-            "most_influential": metrics.get("influential_nodes", [])[:10],
-            "communities": community_info,
-            "raw_response": raw_response
-        }
-    except HTTPException as e:
-        raise e
-    except TooManyRequests as e:
-        # Propagar excepciones de límite de tasa para que sean manejadas por el handler
-        raise e
-    except Exception as e:
-        # Para cualquier otra excepción, devolver una respuesta de error genérica
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al procesar la solicitud: {str(e)}"
-        )
-
-@app.get("/user-info", response_model=UserInfoResponse)
-@app.head("/user-info")  # Añadir soporte para método HEAD
-def get_user_info_endpoint(request: Request, username: str = Query(None)):
-    # Si es una solicitud HEAD o si username es None, retornar una respuesta vacía
-    if request.method == "HEAD" or username is None:
-        return UserInfoResponse(username="")
-    
-    print(f"Recibida solicitud para información de usuario: @{username}")
-    
-    try:
-        # Usar la función del servicio de Twitter
-        result = get_user_info(username)
-        
-        if "error" in result:
-            # Verificar si es un error de límite de tasa
-            if result.get("status_code") == 429:
-                raise TooManyRequests("Twitter API rate limit exceeded")
-                
-            print(f"Error al obtener información para @{username}: {result['error']}")
-            return UserInfoResponse(
-                username=username,
-                error=result["error"],
-                raw_response=result.get("raw_response")
+        if not graph or len(graph.nodes()) == 0:
+            raise HTTPException(
+                status_code=404,
+                detail="No se encontraron tweets o usuarios que cumplan los criterios de búsqueda."
             )
         
-        print(f"Información obtenida con éxito para @{username}")
-        return UserInfoResponse(
-            username=username,
-            name=result.get("name"),
-            raw_response=result.get("raw_response")
-        )
-    except TooManyRequests as e:
-        # Propagar excepciones de límite de tasa para que sean manejadas por el handler
-        raise e
+        metrics = get_network_metrics(graph)
+        
+        if not metrics:
+            raise HTTPException(
+                status_code=500,
+                detail="No se pudieron calcular las métricas del grafo."
+            )
+        
+        if "error" in metrics:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error al calcular métricas: {metrics['error']}"
+            )
+        
+        return metrics
+        
     except Exception as e:
-        # Para cualquier otra excepción, devolver una respuesta de error genérica
+        logger.error(f"Error en analyze_network: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al procesar la solicitud: {str(e)}"
+            status_code=500,
+            detail=str(e)
         )
 
-# Endpoint sencillo para verificar la conexión
-@app.get("/health")
-def check_health():
-    status = {
-        "status": "ok",
-        "api_status": "unknown"
-    }
-    
-    # Verificar el estado de la API de Twitter si el cliente está inicializado
-    if client:
-        try:
-            # Intentar una petición simple para verificar la API
-            client.get_user(username="twitter")
-            status["api_status"] = "ok"
-        except TooManyRequests:
-            status["api_status"] = "rate_limited"
-        except Exception as e:
-            status["api_status"] = "error"
-            status["api_error"] = str(e)
-    else:
-        status["api_status"] = "not_configured"
-    
-    return status
+@app.get("/user-info")
+async def get_user_info_endpoint(username: str):
+    try:
+        user_info = get_user_info(username)
+        
+        if "error" in user_info:
+            raise HTTPException(
+                status_code=user_info.get("status_code", 500),
+                detail=user_info["error"]
+            )
+            
+        return user_info
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
