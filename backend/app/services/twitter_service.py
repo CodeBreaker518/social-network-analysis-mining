@@ -34,36 +34,31 @@ bearer_token = BEARER_TOKEN
 access_token = TWITTER_ACCESS_TOKEN
 access_secret = TWITTER_ACCESS_SECRET
 
-# Sistema de caché permanente
+# Variables globales
 cache = {}
-
-# Configuración de reintentos
+last_cache_cleanup = datetime.now()
+CACHE_CLEANUP_INTERVAL = 3600  # 1 hora
+CACHE_DURATION = 7200  # 2 horas
 MAX_RETRIES = 3
 INITIAL_BACKOFF = 2  # segundos
-
-# Inicialización del cliente de Twitter
 client = None
-
-# Variables para modelos de NLP
 nltk_initialized = False
 sentiment_analyzer = None
 
-def initialize_nltk():
-    """Inicializa NLTK solo cuando sea necesario"""
-    global nltk_initialized
-    if not nltk_initialized:
-        try:
-            import nltk
-            nltk.download('stopwords', quiet=True)
-            from nltk.corpus import stopwords
-            global spanish_stopwords
-            spanish_stopwords = set(stopwords.words('spanish'))
-            nltk_initialized = True
-            return True
-        except Exception as e:
-            print(f"Error al inicializar NLTK: {str(e)}")
-            return False
-    return True
+def initialize_sentiment_analyzer():
+    """Inicializa el analizador de sentimientos usando BERT multilingüe."""
+    global sentiment_analyzer
+    try:
+        sentiment_analyzer = pipeline(
+            "sentiment-analysis",
+            model="nlptown/bert-base-multilingual-uncased-sentiment",
+            truncation=True
+        )
+        print("Modelo de análisis de sentimientos inicializado correctamente")
+        return True
+    except Exception as e:
+        print(f"Error al inicializar el modelo de sentimientos: {str(e)}")
+        return False
 
 def initialize_twitter_client():
     global client
@@ -72,14 +67,12 @@ def initialize_twitter_client():
             print("ERROR: No se ha encontrado el Bearer Token para la API de Twitter")
             return False
             
-        # Inicializar cliente con el bearer token para la API v2
         print("Intentando inicializar cliente de Twitter V2 con Bearer Token...")
         client = tweepy.Client(
             bearer_token=bearer_token,
-            wait_on_rate_limit=True  # Esperar automáticamente cuando se alcance el límite
+            wait_on_rate_limit=True
         )
         
-        # Opcional: verificar usuario propio si tenemos credenciales completas
         if consumer_key and consumer_secret and access_token and access_secret:
             try:
                 client = tweepy.Client(
@@ -94,36 +87,27 @@ def initialize_twitter_client():
                 return True
             except Exception as e:
                 print(f"Error al inicializar cliente con credenciales completas: {str(e)}")
-                # Si falla con credenciales completas, intentar solo con bearer token
                 client = tweepy.Client(bearer_token=bearer_token, wait_on_rate_limit=True)
                 print("Cliente de Twitter inicializado solo con Bearer Token")
                 return True
         print("Cliente de Twitter inicializado solo con Bearer Token")
         return True
-    except TooManyRequests:
-        print("Error 429: Demasiadas solicitudes al intentar inicializar el cliente")
-        return False
     except Exception as e:
         print(f"Error al inicializar cliente de Twitter: {str(e)}")
         return False
 
-# Intentar inicialización inicial
+# Inicialización de servicios
+print("Iniciando servicios...")
 if not initialize_twitter_client():
     print("ADVERTENCIA: No se pudo inicializar el cliente de Twitter al inicio")
 
-def clean_cache():
-    """Limpia la caché solo si ha pasado el intervalo de limpieza"""
-    global last_cache_cleanup
-    current_time = datetime.now()
-    
-    if (current_time - last_cache_cleanup).total_seconds() >= CACHE_CLEANUP_INTERVAL:
-        expired_keys = [
-            key for key, (cache_time, _) in cache.items()
-            if current_time - cache_time > timedelta(seconds=CACHE_DURATION)
-        ]
-        for key in expired_keys:
-            del cache[key]
-        last_cache_cleanup = current_time
+try:
+    if initialize_sentiment_analyzer():
+        print("Analizador de sentimientos inicializado correctamente")
+    else:
+        print("ADVERTENCIA: No se pudo inicializar el analizador de sentimientos")
+except Exception as e:
+    print(f"Error al inicializar el analizador de sentimientos: {str(e)}")
 
 # Funcion Decorador para caché y reintentos
 def with_retry_and_cache(cache_key: str, cache_duration: int = None):
@@ -397,14 +381,16 @@ def process_tweets(response, G):
             
             # Obtener ID del tweet de manera segura
             tweet_id = getattr(tweet, 'id', 'unknown')
+            created_at = getattr(tweet, 'created_at', None)
+            created_at_str = created_at.isoformat() if created_at else None
             
-            # Crear objeto de tweet con metadata completa y serializar la fecha
+            # Crear objeto de tweet con metadata completa
             tweet_obj = {
                 'id': str(tweet_id),
                 'text': text,
                 'author': users_dict[author_id]['username'],
                 'author_name': users_dict[author_id]['name'],
-                'created_at': ensure_serializable(getattr(tweet, 'created_at', None)),
+                'created_at': created_at_str,
                 'engagement_score': engagement_score
             }
             
@@ -441,17 +427,22 @@ def process_tweets(response, G):
             if hasattr(tweet, 'referenced_tweets') and tweet.referenced_tweets:
                 for ref_tweet in tweet.referenced_tweets:
                     ref_id = getattr(ref_tweet, 'id', None)
-                    if not ref_id or ref_id not in users_dict:
+                    if not ref_id:
                         continue
                         
-                    ref_tweet_data = users_dict[ref_id]
-                    ref_author_id = ref_tweet_data['id']
+                    ref_author_id = None
+                    # Buscar el autor del tweet referenciado en los usuarios
+                    if hasattr(response, 'includes') and 'tweets' in response.includes:
+                        for included_tweet in response.includes['tweets']:
+                            if getattr(included_tweet, 'id', None) == ref_id:
+                                ref_author_id = getattr(included_tweet, 'author_id', None)
+                                break
                     
                     if ref_author_id and ref_author_id in users_dict:
                         if not G.has_node(ref_author_id):
                             G.add_node(ref_author_id,
-                                     name=ref_tweet_data['username'],
-                                     full_name=ref_tweet_data['name'])
+                                     name=users_dict[ref_author_id]['username'],
+                                     full_name=users_dict[ref_author_id]['name'])
                         
                         edge_type = getattr(ref_tweet, 'type', 'unknown')
                         if edge_type == 'retweeted':
@@ -493,21 +484,6 @@ def process_tweets(response, G):
     G.graph['words'] = words
     G.graph['urls'] = urls
 
-def initialize_sentiment_analyzer():
-    """Inicializa el analizador de sentimientos usando BERT multilingüe."""
-    global sentiment_analyzer
-    try:
-        sentiment_analyzer = pipeline(
-            "sentiment-analysis",
-            model="nlptown/bert-base-multilingual-uncased-sentiment",
-            truncation=True
-        )
-        print("Modelo de análisis de sentimientos inicializado correctamente")
-        return True
-    except Exception as e:
-        print(f"Error al inicializar el modelo de sentimientos: {str(e)}")
-        return False
-
 def analyze_sentiment(text: str) -> float:
     """Analiza el sentimiento de un texto usando BERT multilingüe."""
     global sentiment_analyzer
@@ -536,7 +512,7 @@ def analyze_sentiment(text: str) -> float:
 
 # Función para obtener métricas del grafo
 def get_network_metrics(G: nx.Graph) -> Dict[str, Any]:
-    """Obtiene métricas del grafo asegurando que sean serializables."""
+    """Obtiene métricas del grafo."""
     metrics = {}
     if len(G.nodes()) == 0:
         return {"error": "Grafo vacío"}
@@ -622,12 +598,81 @@ def get_network_metrics(G: nx.Graph) -> Dict[str, Any]:
             metrics["communities"].append(community_info)
         
         # Procesar datos del grafo
+        tweet_sentiments = []
+        if 'tweet_texts' in G.graph:
+            # Analizar sentimiento de los tweets
+            sentiments = []
+            for idx, text in enumerate(G.graph['tweet_texts']):
+                sentiment_score = analyze_sentiment(text)
+                if sentiment_score > 0.2:
+                    sentiments.append('positivo')
+                elif sentiment_score < -0.2:
+                    sentiments.append('negativo')
+                else:
+                    sentiments.append('neutro')
+                tweet_sentiments.append(sentiment_score)
+            # Calcular proporciones de sentimiento
+            total_tweets = len(sentiments)
+            if total_tweets > 0:
+                sentiment_counts = Counter(sentiments)
+                metrics["sentiment"] = {
+                    "positivo": sentiment_counts['positivo'] / total_tweets,
+                    "negativo": sentiment_counts['negativo'] / total_tweets,
+                    "neutro": sentiment_counts['neutro'] / total_tweets
+                }
+            else:
+                metrics["sentiment"] = {
+                    "positivo": 0,
+                    "negativo": 0,
+                    "neutro": 1  # Por defecto neutro si no hay tweets
+                }
+        # Asociar sentimiento a cada tweet_example
+        representative_examples = {"positivo": None, "negativo": None}
+        if 'tweet_examples' in G.graph and tweet_sentiments:
+            tweet_examples = G.graph['tweet_examples']
+            # Añadir el score a cada tweet_example
+            for i, tw in enumerate(tweet_examples):
+                tw['sentiment_score'] = tweet_sentiments[i] if i < len(tweet_sentiments) else 0.0
+            # Seleccionar el positivo y negativo más representativo
+            positivos = [tw for tw in tweet_examples if tw['sentiment_score'] > 0.2]
+            negativos = [tw for tw in tweet_examples if tw['sentiment_score'] < -0.2]
+            if positivos:
+                representative_examples['positivo'] = max(positivos, key=lambda t: t['sentiment_score'])
+            if negativos:
+                representative_examples['negativo'] = min(negativos, key=lambda t: t['sentiment_score'])
+        metrics['representative_examples'] = representative_examples
         if 'tweet_examples' in G.graph:
-            metrics['tweet_examples'] = serialize_for_db(G.graph['tweet_examples'])
+            metrics['tweet_examples'] = G.graph['tweet_examples']
         
-        # Asegurarse de que todo sea serializable antes de retornar
-        return serialize_for_db(metrics)
+        # Insights principales
+        insights = {}
+        if 'hashtags' in G.graph and G.graph['hashtags']:
+            hashtag_counts = Counter(G.graph['hashtags'])
+            insights['top_hashtags'] = [
+                {'hashtag': ht, 'count': cnt}
+                for ht, cnt in hashtag_counts.most_common(5)
+            ]
+        else:
+            insights['top_hashtags'] = []
+        if 'words' in G.graph and G.graph['words']:
+            word_counts = Counter(G.graph['words'])
+            insights['top_keywords'] = [
+                {'word': w, 'count': cnt}
+                for w, cnt in word_counts.most_common(5)
+            ]
+        else:
+            insights['top_keywords'] = []
+        if 'urls' in G.graph and G.graph['urls']:
+            url_counts = Counter(G.graph['urls'])
+            insights['top_urls'] = [
+                {'url': u, 'count': cnt}
+                for u, cnt in url_counts.most_common(5)
+            ]
+        else:
+            insights['top_urls'] = []
+        metrics['insights'] = insights
         
+        return metrics
     except Exception as e:
         print(f"Error al calcular métricas: {str(e)}")
         return {"error": f"Error al calcular métricas: {str(e)}"}

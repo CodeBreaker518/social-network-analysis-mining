@@ -176,7 +176,26 @@ async def analyze_network(
                 detail=f"Error al calcular métricas: {metrics['error']}"
             )
         
-        return metrics
+        # Construir la respuesta completa que espera el frontend
+        response = {
+            "query": query,
+            "metrics": {
+                "num_nodes": metrics.get("num_nodes", 0),
+                "num_edges": metrics.get("num_edges", 0),
+                "edge_types": metrics.get("edge_types", {}),
+                "influential_nodes": metrics.get("influential_nodes", []),
+                "sentiment": metrics.get("sentiment", {
+                    "positivo": 0,
+                    "negativo": 0,
+                    "neutro": 1  # valor por defecto cuando no hay análisis de sentimiento
+                })
+            },
+            "most_influential": metrics.get("influential_nodes", []),
+            "communities": metrics.get("communities", []),
+            "raw_response": metrics.get("raw_response", None)
+        }
+        
+        return response
         
     except Exception as e:
         logger.error(f"Error en analyze_network: {str(e)}")
