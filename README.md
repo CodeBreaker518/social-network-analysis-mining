@@ -1,89 +1,119 @@
-# Análisis de Redes Sociales
+# Social Network Mining
 
-Una aplicación web para analizar y visualizar redes sociales, específicamente las conexiones y comunidades de la red social Twitter.
+Aplicación para análisis de redes sociales que permite visualizar y analizar conexiones entre usuarios, comunidades y tendencias en Twitter/X. Utiliza un sistema de caché en memoria para un rendimiento óptimo.
 
-## Características
+## Características Principales
 
-- Búsqueda de usuarios y tweets por consultas específicas
-- Visualización de grafos de redes sociales
-- Análisis de métricas (centralidad, comunidades, influencia)
-- Identificación de nodos influyentes y comunidades
-- Interfaz intuitiva con múltiples vistas de datos
-
-## Minería de Datos y Métodos de Procesamiento
-
-Este proyecto utiliza diversas técnicas de minería de datos y análisis de redes sociales:
-
-- **Teoría de grafos**: Utilizamos NetworkX para modelar relaciones entre usuarios como grafos
-- **Detección de comunidades**: Aplicamos algoritmos de clustering para identificar grupos cohesivos
-- **Métricas de centralidad**: Calculamos grado de centralidad, intermediación y cercanía para identificar nodos influyentes
-- **Análisis de patrones de interacción**: Modelamos diferentes tipos de interacciones (retweets, menciones, respuestas)
-- **Técnicas de caché y optimización**: Minimizamos llamadas a la API y mejoramos los tiempos de respuesta
-- **Visualización de datos de red**: Representación visual interactiva de las comunidades y sus conexiones
-
-## Estructura del proyecto
-
-- **frontend**: Aplicación web en Next.js con componentes UI modernos y de visualizacion
-- **backend**: Desarrollo de Api con FastAPI (python) que utiliza la API de X/Twitter y procesa datos de tweets
+- Búsqueda y análisis de tweets en tiempo real
+- Visualización de redes de interacción entre usuarios
+- Detección de comunidades y usuarios influyentes
+- Sistema de caché optimizado para consultas rápidas
+- Interfaz moderna y responsiva
 
 ## Requisitos
 
-- Python 3.8+ (backend)
-- Node.js 16+ (frontend)
-- Credenciales de API de Twitter
+- Python 3.8 o superior
+- Node.js 14 o superior
+- Bun.sh
+- Credenciales de API de Twitter/X
 
-## Instalación
+## Configuración
 
-### Backend
+1. Clona el repositorio:
+```bash
+git clone https://github.com/tu-usuario/social-network-mining.git
+cd social-network-mining
+```
 
+2. Configura las variables de entorno:
+   - Crea un archivo `.env` en la raiz del proyecto con las siguientes variables:
+```env
+TWITTER_API_KEY=tu_api_key
+TWITTER_API_SECRET=tu_api_secret
+BEARER_TOKEN=tu_bearer_token
+TWITTER_ACCESS_TOKEN=tu_access_token
+TWITTER_ACCESS_SECRET=tu_access_secret
+```
+
+3. Instala las dependencias del backend:
 ```bash
 cd backend
 python -m venv venv
-venv\Scripts\activate
+source venv/bin/activate  # En Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Configura tus credenciales de Twitter en un archivo `.env` en la raíz del proyecto:
-
-```
-TWITTER_API_KEY=your_api_key
-TWITTER_API_SECRET=your_api_secret
-BEARER_TOKEN=your_bearer_token
-TWITTER_ACCESS_TOKEN=your_access_token
-TWITTER_ACCESS_SECRET=your_access_secret
-```
-
-### Frontend
-
+4. Instala las dependencias del frontend:
 ```bash
 cd frontend
-bun install
+bun install  # o npm install
 ```
 
 ## Uso
 
-### Iniciar el backend
-
+1. Inicia el backend:
 ```bash
 cd backend
-venv\Scripts\activate
+source venv/bin/activate  # En Windows: venv\Scripts\activate
 uvicorn app.main:app --reload
 ```
+El backend se iniciará en `http://localhost:8000`.
 
-### Iniciar el frontend
-
+2. Inicia el frontend:
 ```bash
 cd frontend
-bun dev
+bun run dev  # o npm run dev
+```
+El frontend estará disponible en `http://localhost:3000`
+
+## Arquitectura
+
+El proyecto utiliza una arquitectura moderna y eficiente:
+
+### Backend
+- FastAPI para el servidor REST
+- Sistema de caché en memoria para optimizar consultas
+- Procesamiento asíncrono de peticiones
+- Análisis de redes sociales con NetworkX
+- Gestión eficiente de la API de Twitter
+
+### Frontend
+- Next.js 13+ con App Router
+- Interfaz moderna con Tailwind CSS
+- Visualización de grafos interactiva
+- Componentes reutilizables
+
+## Estructura del proyecto
+
+```
+social-network-mining/
+├── backend/
+│   ├── app/
+│   │   ├── services/
+│   │   │   └── twitter_service.py
+│   │   └── main.py
+│   └── requirements.txt
+└── frontend/
+    ├── app/
+    ├── components/
+    │   ├── search/
+    │   └── results/
+    └── package.json
 ```
 
-Navega a `http://localhost:3000` para usar la aplicación.
+## Sistema de Caché
 
+El proyecto implementa un sistema de caché en memoria que:
+- Almacena permanentemente los resultados de todas las búsquedas realizadas
+- Reutiliza automáticamente los resultados de búsquedas idénticas previas
+- Evita llamadas innecesarias a la API de Twitter
+- Mejora significativamente el tiempo de respuesta para búsquedas repetidas
+- No tiene expiración de datos, manteniendo todo el historial de búsquedas
 
-Esta herramienta permite entender:
-- Estructuras de comunidades en conversaciones digitales
-- Patrones de influencia y difusión de información
-- Polarización y agrupaciones temáticas
-- Actores clave en conversaciones sobre temas específicos
-- Flujos de información y propagación de contenido
-- Descubrimiento de subtemas emergentes en conversaciones
+## Contribuir
+
+1. Haz fork del repositorio
+2. Crea una rama para tu feature (`git checkout -b feature/nueva-funcionalidad`)
+3. Haz commit de tus cambios (`git commit -am 'Añade nueva funcionalidad'`)
+4. Push a la rama (`git push origin feature/nueva-funcionalidad`)
+5. Crea un Pull Request
