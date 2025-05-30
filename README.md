@@ -21,7 +21,7 @@ Aplicación para análisis de redes sociales que permite visualizar y analizar c
 
 1. Clona el repositorio:
 ```bash
-git clone https://github.com/tu-usuario/social-network-mining.git
+git clone https://github.com/CodeBreaker518/social-network-mining.git
 cd social-network-mining
 ```
 
